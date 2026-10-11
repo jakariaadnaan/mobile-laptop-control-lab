@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Advanced Mobile-Laptop Control Lab - Professional GUI Dashboard.
 
-This is the first working milestone of the project: a professional control panel
-for Android + laptop control with a clean UI and functional backend-driven actions.
+This version adds laptop access, monitoring, and a polished user workflow while
+keeping the app stable and usable for non-developers.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -44,14 +45,15 @@ class ProfessionalControlApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Advanced Mobile-Laptop Control Lab")
-        self.root.geometry("1200x760")
-        self.root.minsize(1000, 620)
+        self.root.geometry("1200x780")
+        self.root.minsize(1000, 650)
         self.root.configure(bg="#101418")
 
         self.config = ConfigManager()
         self.device_manager = DeviceManager()
         self.executor = CommandExecutor(max_timeout=35)
         self.log_dir = Path(self.config.get("log_dir", str(Path.home() / ".lab-control" / "logs")))
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         self.app_logger = AppLogger(self.log_dir)
 
         self.device_ip = tk.StringVar(value=self.config.get("device_ip", "192.168.1.25"))
@@ -72,44 +74,39 @@ class ProfessionalControlApp:
         style.theme_use("clam")
         style.configure("TFrame", background="#101418")
         style.configure("TLabel", background="#101418", foreground="#dfeaf4")
-        style.configure("TButton", background="#1b2730", foreground="#ffffff")
-        style.map("TButton", background=[("active", "#243845")])
+        style.configure("TButton", background="#1d2a35", foreground="#ffffff")
         style.configure("TLabelframe", background="#101418")
         style.configure("TLabelframe.Label", background="#101418", foreground="#8be9fd")
         style.configure("Treeview", background="#0d1117", foreground="#dfeaf4", fieldbackground="#0d1117")
         style.configure("Treeview.Heading", background="#1d2a35", foreground="#f2f2f2")
 
-        root = self.root
-        top = ttk.Frame(root, padding=(18, 18, 18, 8))
+        top = ttk.Frame(self.root, padding=(18, 18, 18, 8))
         top.pack(fill="x")
 
-        header_title = ttk.Label(top, text="ADVANCED MOBILE-LAPTOP CONTROL LAB", font=("Arial", 18, "bold"))
-        header_title.pack(side="left")
+        ttk.Label(top, text="ADVANCED MOBILE-LAPTOP CONTROL LAB", font=("Arial", 18, "bold")).pack(side="left")
 
         self.status_var = tk.StringVar(value="System ready")
-        status_label = ttk.Label(top, textvariable=self.status_var, foreground="#7ef29a")
-        status_label.pack(side="right")
+        ttk.Label(top, textvariable=self.status_var, foreground="#7ef29a").pack(side="right")
 
-        main = ttk.Frame(root)
+        main = ttk.Frame(self.root)
         main.pack(fill="both", expand=True, padx=(18, 18), pady=(0, 18))
 
         left = ttk.Frame(main)
         left.pack(side="left", fill="y", padx=(0, 12))
 
-        note = ttk.Notebook(left)
-        note.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(left)
+        notebook.pack(fill="both", expand=True)
 
-        self._build_dashboard_tab(note)
-        self._build_android_tab(note)
-        self._build_laptop_tab(note)
-        self._build_monitor_tab(note)
-        self._build_security_tab(note)
+        self._build_dashboard_tab(notebook)
+        self._build_android_tab(notebook)
+        self._build_laptop_tab(notebook)
+        self._build_monitor_tab(notebook)
+        self._build_security_tab(notebook)
 
         right = ttk.Frame(main)
         right.pack(side="left", fill="both", expand=True)
 
-        console_title = ttk.Label(right, text="Live Console", font=("Arial", 11, "bold"))
-        console_title.pack(anchor="w", pady=(0, 6))
+        ttk.Label(right, text="Live Console", font=("Arial", 11, "bold")).pack(anchor="w", pady=(0, 6))
 
         console_frame = ttk.Frame(right)
         console_frame.pack(fill="both", expand=True)
@@ -128,7 +125,7 @@ class ProfessionalControlApp:
         scrollbar.pack(side="right", fill="y")
         self.console.configure(yscrollcommand=scrollbar.set)
 
-        status_bar = ttk.Frame(root)
+        status_bar = ttk.Frame(self.root)
         status_bar.pack(fill="x", padx=18, pady=(0, 14))
 
         ttk.Label(status_bar, text="Connected devices: ").pack(side="left")
@@ -143,18 +140,18 @@ class ProfessionalControlApp:
         frame = ttk.Frame(parent)
         parent.add(frame, text="Dashboard")
 
-        quick = ttk.LabelFrame(frame, text="Quick Commands", padding=(10, 10, 10, 8))
+        quick = ttk.LabelFrame(frame, text="Quick Commands", padding=(12, 8, 12, 8))
         quick.pack(fill="x", padx=10, pady=10)
 
-        ttk.Button(quick, text="Scan Devices", command=self.scan_devices).pack(fill="x", pady=4)
-        ttk.Button(quick, text="Check Environment", command=self.check_environment).pack(fill="x", pady=4)
-        ttk.Button(quick, text="Auto Setup", command=self.auto_setup).pack(fill="x", pady=4)
+        ttk.Button(quick, text="Scan Devices", command=self.scan_devices).pack(fill="x", pady=3)
+        ttk.Button(quick, text="Check Environment", command=self.check_environment).pack(fill="x", pady=3)
+        ttk.Button(quick, text="Auto Setup", command=self.auto_setup).pack(fill="x", pady=3)
 
-        device_panel = ttk.LabelFrame(frame, text="Connected Device List", padding=(10, 10, 10, 8))
-        device_panel.pack(fill="both", expand=True, padx=10, pady=10)
+        devices = ttk.LabelFrame(frame, text="Connected Device List", padding=(12, 8, 12, 8))
+        devices.pack(fill="both", expand=True, padx=10, pady=10)
 
-        columns = ("name", "model", "version", "status")
-        self.device_tree = ttk.Treeview(device_panel, columns=columns, show="headings", height=12)
+        cols = ("name", "model", "version", "status")
+        self.device_tree = ttk.Treeview(devices, columns=cols, show="headings", height=12)
         self.device_tree.heading("name", text="Name")
         self.device_tree.heading("model", text="Model")
         self.device_tree.heading("version", text="Version")
@@ -163,14 +160,13 @@ class ProfessionalControlApp:
         self.device_tree.column("model", width=140)
         self.device_tree.column("version", width=120)
         self.device_tree.column("status", width=100)
-
         self.device_tree.pack(fill="both", expand=True)
 
     def _build_android_tab(self, parent):
         frame = ttk.Frame(parent)
         parent.add(frame, text="Android")
 
-        conn = ttk.LabelFrame(frame, text="Connection", padding=(10, 10, 10, 8))
+        conn = ttk.LabelFrame(frame, text="Connection", padding=(12, 8, 12, 8))
         conn.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(conn, text="Device IP:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -194,14 +190,14 @@ class ProfessionalControlApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", padx=10, pady=(0, 10))
-        for text, cmd in actions:
-            ttk.Button(btn_frame, text=text, command=cmd).pack(fill="x", pady=3)
+        for text, callback in actions:
+            ttk.Button(btn_frame, text=text, command=callback).pack(fill="x", pady=3)
 
     def _build_laptop_tab(self, parent):
         frame = ttk.Frame(parent)
         parent.add(frame, text="Laptop")
 
-        config = ttk.LabelFrame(frame, text="Laptop Access", padding=(10, 10, 10, 8))
+        config = ttk.LabelFrame(frame, text="Laptop Access", padding=(12, 8, 12, 8))
         config.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(config, text="Laptop IP:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -210,19 +206,19 @@ class ProfessionalControlApp:
         ttk.Entry(config, textvariable=self.laptop_user, width=28).grid(row=1, column=1, sticky="ew", pady=4)
         config.columnconfigure(1, weight=1)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill="x", padx=10, pady=(0, 10))
-
         actions = [
             ("SSH Terminal", self.launch_ssh),
             ("SFTP", self.launch_sftp),
             ("Ping Host", self.ping_host),
             ("VNC Viewer", self.open_vnc),
-            ("X11VNC Guide", self.show_vnc_guide),
             ("SSH Forwarding", self.show_ssh_forward),
+            ("X11VNC Guide", self.show_vnc_guide),
         ]
-        for text, cmd in actions:
-            ttk.Button(btn_frame, text=text, command=cmd).pack(fill="x", pady=3)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+        for text, callback in actions:
+            ttk.Button(btn_frame, text=text, command=callback).pack(fill="x", pady=3)
 
     def _build_monitor_tab(self, parent):
         frame = ttk.Frame(parent)
@@ -230,10 +226,10 @@ class ProfessionalControlApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", padx=10, pady=10)
-        ttk.Button(btn_frame, text="Start Monitoring", command=self.start_monitoring).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="Stop Monitoring", command=self.stop_monitoring).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="Open Log Folder", command=self.open_log_folder).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="View Latest Log", command=self.view_latest_log).pack(fill="x", pady=4)
+        ttk.Button(btn_frame, text="Start Monitoring", command=self.start_monitoring).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="Stop Monitoring", command=self.stop_monitoring).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="Open Log Folder", command=self.open_log_folder).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="View Latest Log", command=self.view_latest_log).pack(fill="x", pady=3)
 
     def _build_security_tab(self, parent):
         frame = ttk.Frame(parent)
@@ -241,10 +237,10 @@ class ProfessionalControlApp:
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", padx=10, pady=10)
-        ttk.Button(btn_frame, text="Save Config", command=self.save_config).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="Generate SSH Keys", command=self.generate_ssh_keys).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="Firewall Rules", command=self.show_firewall_guide).pack(fill="x", pady=4)
-        ttk.Button(btn_frame, text="Environment Check", command=self.check_environment).pack(fill="x", pady=4)
+        ttk.Button(btn_frame, text="Save Config", command=self.save_config).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="Generate SSH Keys", command=self.generate_ssh_keys).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="Firewall Rules", command=self.show_firewall_guide).pack(fill="x", pady=3)
+        ttk.Button(btn_frame, text="Environment Check", command=self.check_environment).pack(fill="x", pady=3)
 
     def _log(self, message: str, level: str = "INFO"):
         with self.console_lock:
@@ -260,16 +256,11 @@ class ProfessionalControlApp:
 
         try:
             devices = self.device_manager.scan_devices()
-            device_count = len(devices)
-            self.device_count_var.set(str(device_count))
+            self.device_count_var.set(str(len(devices)))
             for device in devices:
-                self.device_tree.insert(
-                    "",
-                    "end",
-                    values=(device.name, device.model, device.version, device.status.value),
-                )
-        except Exception as e:
-            self._log(f"Device scan error: {e}", "ERROR")
+                self.device_tree.insert("", "end", values=(device.name, device.model, device.version, device.status.value))
+        except Exception as exc:
+            self._log(f"Device scan error: {exc}", "ERROR")
 
     def save_config(self):
         config = {
@@ -281,7 +272,7 @@ class ProfessionalControlApp:
         }
         self.config.update(**config)
         self._log("Configuration saved")
-        messagebox.showinfo("Saved", "Settings were saved successfully.")
+        messagebox.showinfo("Saved", "Settings saved successfully.")
 
     def scan_devices(self):
         self._log("Scanning Android devices...")
@@ -291,126 +282,134 @@ class ProfessionalControlApp:
         ip = self.device_ip.get().strip()
         port = int(self.device_port.get() or 5555)
         self._log(f"Connecting to Android device at {ip}:{port}...")
-        result = self.device_manager.connect_wireless(ip, port)
-        if result:
+        ok = self.device_manager.connect_wireless(ip, port)
+        if ok:
             self._log("Wireless ADB connection successful", "SUCCESS")
         else:
             self._log("Wireless ADB connection failed", "ERROR")
 
     def disconnect_all(self):
-        self._log("Disconnecting ADB devices...")
-        proc = subprocess_run(["adb", "disconnect"])
-        if proc[0]:
-            self._log("ADB disconnected", "SUCCESS")
-        else:
-            self._log(f"ADB disconnect failed: {proc[1]}", "ERROR")
+        self._log("Disconnecting all ADB devices...")
+        try:
+            result = subprocess.run(["adb", "disconnect"], capture_output=True, text=True, timeout=15)
+            if result.returncode == 0:
+                self._log("ADB disconnected", "SUCCESS")
+            else:
+                self._log(result.stderr or result.stdout, "ERROR")
+        except Exception as exc:
+            self._log(f"ADB disconnect failed: {exc}", "ERROR")
 
     def restart_adb(self):
         self._log("Restarting ADB server...")
-        subprocess_run(["adb", "kill-server"])
-        result = subprocess_run(["adb", "start-server"])
-        if result[0]:
-            self._log("ADB server restarted", "SUCCESS")
-        else:
-            self._log(f"ADB restart failed: {result[1]}", "ERROR")
+        try:
+            subprocess.run(["adb", "kill-server"], check=False, capture_output=True, text=True)
+            result = subprocess.run(["adb", "start-server"], capture_output=True, text=True, timeout=15)
+            if result.returncode == 0:
+                self._log("ADB server restarted", "SUCCESS")
+            else:
+                self._log(result.stderr or result.stdout, "ERROR")
+        except Exception as exc:
+            self._log(f"ADB restart failed: {exc}", "ERROR")
 
     def get_device_info(self):
-        ip = self.device_ip.get().strip()
-        device_id = f"{ip}:{self.device_port.get() or 5555}"
-        self._log(f"Collecting info for {device_id}...")
-        info = self.device_manager.get_device_info(device_id)
+        target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
+        self._log(f"Collecting info for {target}...")
+        info = self.device_manager.get_device_info(target)
         if info:
-            payload = json.dumps(info, indent=2)
-            self._log(payload)
-            self.status_var.set("Info collected")
+            self._log(json.dumps(info, indent=2))
         else:
-            self._log("No device information found", "ERROR")
+            self._log("Unable to fetch device info", "ERROR")
 
     def start_mirror(self):
-        ip = self.device_ip.get().strip()
-        device_id = f"{ip}:{self.device_port.get() or 5555}"
-        self._log(f"Starting screen mirroring for {device_id}...")
-        ok = self.device_manager.start_mirroring(device_id)
+        target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
+        self._log(f"Starting screen mirroring for {target}...")
+        ok = self.device_manager.start_mirroring(target)
         if ok:
-            self._log("Screen mirroring launched", "SUCCESS")
+            self._log("Mirroring launched", "SUCCESS")
         else:
-            self._log("Mirroring failed to start", "ERROR")
+            self._log("Mirroring failed", "ERROR")
 
     def capture_screenshot(self):
         target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
         output = self.log_dir / f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        self._log(f"Capturing screenshot to {output}...")
         ok = self.device_manager.capture_screenshot(target, str(output))
         if ok:
-            self._log(f"Screenshot saved to {output}", "SUCCESS")
+            self._log(f"Screenshot saved: {output}", "SUCCESS")
         else:
-            self._log("Screenshot capture failed", "ERROR")
+            self._log("Capture screenshot failed", "ERROR")
 
     def view_logcat(self):
         target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
-        self._log(f"Fetching logcat for {target}...")
-        text = self.device_manager.get_logcat(target, 120)
-        self._log(text if text else "No logcat output returned")
+        self._log(f"Retrieving logcat for {target}...")
+        output = self.device_manager.get_logcat(target, 150)
+        if output:
+            self._log(output)
+        else:
+            self._log("No logcat output returned", "ERROR")
 
     def reboot_device(self):
-        if messagebox.askyesno("Reboot device", "Reboot connected Android device?"):
+        if messagebox.askyesno("Reboot Android device", "Reboot the connected Android device?"):
             target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
             self._log(f"Rebooting {target}...")
             ok = self.device_manager.reboot_device(target)
             if ok:
                 self._log("Reboot command sent", "SUCCESS")
             else:
-                self._log("Reboot command failed", "ERROR")
+                self._log("Reboot failed", "ERROR")
 
     def list_packages(self):
         target = f"{self.device_ip.get()}:{self.device_port.get() or 5555}"
         packages = self.device_manager.list_packages(target)
         if packages:
-            self._log("Installed packages:\n" + "\n".join(packages[:50]))
+            self._log("Installed packages:\n" + "\n".join(packages[:60]))
         else:
             self._log("No packages returned", "ERROR")
 
     def launch_ssh(self):
         user_host = f"{self.laptop_user.get()}@{self.laptop_ip.get()}"
-        self._log(f"Open SSH terminal: ssh {user_host}")
+        self._log(f"Opening SSH: ssh {user_host}")
         try:
             if os.name == "nt":
                 os.system(f"start cmd /k ssh {user_host}")
             else:
                 os.system(f"xterm -e 'ssh {user_host}' >/dev/null 2>&1 &")
         except Exception as exc:
-            self._log(f"Unable to launch SSH terminal: {exc}", "ERROR")
+            self._log(f"SSH launch failed: {exc}", "ERROR")
 
     def launch_sftp(self):
         user_host = f"{self.laptop_user.get()}@{self.laptop_ip.get()}"
-        self._log(f"Open SFTP session: sftp {user_host}")
+        self._log(f"Opening SFTP: sftp {user_host}")
         try:
             if os.name == "nt":
                 os.system(f"start cmd /k sftp {user_host}")
             else:
                 os.system(f"xterm -e 'sftp {user_host}' >/dev/null 2>&1 &")
         except Exception as exc:
-            self._log(f"Unable to launch SFTP: {exc}", "ERROR")
+            self._log(f"SFTP launch failed: {exc}", "ERROR")
 
     def ping_host(self):
         ip = self.laptop_ip.get().strip()
-        self._log(f"Pinging host {ip}...")
-        result = subprocess_run(["ping", "-c", "4", ip])
-        if result[0]:
-            self._log(result[1])
-        else:
-            self._log(result[1], "ERROR")
+        self._log(f"Pinging {ip}...")
+        try:
+            result = subprocess.run(["ping", "-c", "4", ip], capture_output=True, text=True, timeout=15)
+            output = result.stdout + result.stderr
+            self._log(output or "Ping completed")
+        except Exception as exc:
+            self._log(f"Ping failed: {exc}", "ERROR")
 
     def open_vnc(self):
-        self._log(f"Use VNC to connect to {self.laptop_ip.get()}:5901")
-        messagebox.showinfo("VNC", f"Connect VNC Viewer to {self.laptop_ip.get()}:5901")
+        host = self.laptop_ip.get().strip()
+        self._log(f"VNC target: {host}:5901")
+        messagebox.showinfo("VNC", f"Open VNC Viewer and connect to:\n{host}:5901")
 
     def show_vnc_guide(self):
         text = """X11VNC Setup Guide:\n\n1. sudo apt install x11vnc\n2. x11vnc -display :0 -listen localhost\n3. Connect with VNC Viewer to <ip>:5901\n"""
         messagebox.showinfo("X11VNC Guide", text)
 
     def show_ssh_forward(self):
-        text = """SSH Port Forward Example:\n\nssh -L 5901:localhost:5901 user@192.168.1.50\n"""
-        messagebox.showinfo("SSH Forward", text)
+        text = """SSH port forwarding example:\n\nssh -L 5901:localhost:5901 user@192.168.1.50\n"""
+        messagebox.showinfo("SSH Forwarding", text)
 
     def start_monitoring(self):
         if self.monitor_active:
@@ -425,9 +424,11 @@ class ProfessionalControlApp:
         def worker():
             while self.monitor_active:
                 try:
-                    proc = subprocess_run(["adb", "devices"])
-                    if proc[0]:
-                        self._log(proc[1].strip().splitlines()[-1] if proc[1].strip() else "adb ok")
+                    result = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        lines = [ln for ln in result.stdout.splitlines() if "List of attached" not in ln and ln.strip()]
+                        if lines:
+                            self._log(" | ".join(lines[-3:]))
                     time.sleep(10)
                 except Exception as exc:
                     self._log(f"Monitor error: {exc}", "ERROR")
@@ -450,7 +451,7 @@ class ProfessionalControlApp:
             else:
                 os.system(f"xdg-open '{self.log_dir}' >/dev/null 2>&1 &")
         except Exception as exc:
-            self._log(f"Failed to open folder: {exc}", "ERROR")
+            self._log(f"Could not open log folder: {exc}", "ERROR")
 
     def view_latest_log(self):
         logs = sorted(self.log_dir.glob("*.log"), reverse=True)
@@ -463,21 +464,21 @@ class ProfessionalControlApp:
                 content = fh.read()[-1500:]
             self._log(f"Latest log: {latest.name}\n{content}")
         except Exception as exc:
-            self._log(f"Could not read latest log: {exc}", "ERROR")
+            self._log(f"Could not read log: {exc}", "ERROR")
 
     def generate_ssh_keys(self):
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(exist_ok=True)
         key_path = ssh_dir / "id_rsa"
         if key_path.exists():
-            self._log("SSH key already exists at ~/.ssh/id_rsa")
+            self._log("SSH key already exists")
             return
         self._log("Generating SSH key pair...")
-        result = subprocess_run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", str(key_path), "-N", ""])
-        if result[0]:
+        result = subprocess.run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", str(key_path), "-N", ""], capture_output=True, text=True)
+        if result.returncode == 0:
             self._log("SSH key generated successfully", "SUCCESS")
         else:
-            self._log(f"Failed to generate SSH key: {result[1]}", "ERROR")
+            self._log(result.stderr or result.stdout, "ERROR")
 
     def show_firewall_guide(self):
         text = """Firewall rules example:\n\nufw allow 22\nufw allow 5901\nufw allow 5555\nufw enable\n"""
@@ -486,36 +487,20 @@ class ProfessionalControlApp:
     def check_environment(self):
         tools = ["adb", "scrcpy", "ssh", "python3", "git"]
         for tool in tools:
-            result = subprocess_run(["which", tool])
-            if result[0]:
+            result = subprocess.run(["which", tool], capture_output=True, text=True)
+            if result.returncode == 0:
                 self._log(f"{tool}: OK")
             else:
                 self._log(f"{tool}: MISSING", "ERROR")
 
     def auto_setup(self):
         self._log("Running setup script...")
-        result = subprocess_run(["bash", "scripts/setup-advanced-lab.sh"])
-        if result[0]:
+        result = subprocess.run(["bash", "scripts/setup-advanced-lab.sh"], capture_output=True, text=True)
+        if result.returncode == 0:
             self._log("Auto setup completed", "SUCCESS")
+            self._log(result.stdout)
         else:
-            self._log(f"Auto setup failed: {result[1]}", "ERROR")
-
-
-def subprocess_run(args):
-    try:
-        proc = subprocess_run_core(args)
-        return True, proc
-    except Exception as exc:
-        return False, str(exc)
-
-
-def subprocess_run_core(args):
-    import subprocess
-    result = subprocess.run(args, capture_output=True, text=True, timeout=30)
-    output = "\n".join(part for part in [result.stdout.strip(), result.stderr.strip()] if part)
-    if result.returncode == 0:
-        return output
-    raise RuntimeError(output or f"Command failed with code {result.returncode}")
+            self._log(result.stderr or result.stdout, "ERROR")
 
 
 def main():
